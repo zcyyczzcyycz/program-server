@@ -9,7 +9,6 @@ const router = express.Router();
 // 定义模块内路由
 router.get('/', async (req, res) => {
   let [result] = await res.pool.execute('select * from user;');
-  console.log('result', result);
   res.success(result);
 });
 

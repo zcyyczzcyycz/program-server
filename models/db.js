@@ -20,13 +20,13 @@ const pool = mysql.createPool({
 exports.pool = pool;
 
 // 验证是否成功连接数据库
-exports.verifyPoolConnection = async (next) => {
+exports.verifyPoolConnection = async () => {
   try {
     const connection = await pool.getConnection();
     console.log('✅ 数据库连接池验证成功，已成功获取连接！');
     connection.release(); // 释放连接（将连接放回连接池，变为空闲状态，供后续使用）
   } catch (err) {
     console.error('❌ 数据库连接池验证失败：', err.message);
-    next(new Error('数据库连接池验证失败'));
+    throw new Error('数据库连接池验证失败');
   }
 };

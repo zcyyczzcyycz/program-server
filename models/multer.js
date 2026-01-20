@@ -1,32 +1,41 @@
 const path = require('path');
 const multer = require('multer');
+const fs = require('fs'); // 引入fs，确保目录存在
 
-//获取绝对路径
-let fullPath = path.resolve(process.cwd() + '/public/upload');
+// 路径拼接（用path.join适配所有系统）
+const fullPath = path.join(process.cwd(), 'public', 'upload');
 
-//设置文件的名称
-let filename = '';
+// 确保上传目录存在（避免Multer写入失败）
+if (!fs.existsSync(fullPath)) {
+  fs.mkdirSync(fullPath, { recursive: true }); // recursive: true 自动创建多级目录
+}
 
-let storage = multer.diskStorage({
-  //设置存储路径
+// 3. 修复storage配置：去掉全局变量filename，改用局部变量
+const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    // 路径已确保存在，直接传递
     cb(null, fullPath);
   },
-  //设置存储的文件名
   filename: (req, file, cb) => {
-    filename = file.originalname;
-    cb(null, filename);
+    // 直接使用file.originalname（或自定义文件名，避免全局变量）
+    const uniqueFilename = `${Date.now()}-${file.originalname}`; // 加时间戳避免文件名重复
+    file.url = `/upload/${uniqueFilename}`; // 自定义：网络访问地址
+    file.uploadTime = new Date().toISOString(); // 自定义：上传时间
+    cb(null, uniqueFilename);
   },
 });
-exports.upload = multer({ storage });
 
+// 4. 初始化Multer实例（仅初始化一次，避免冲突）
+exports.upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 可选：限制文件大小5MB
+});
+
+// 5. 修复errorHandler：直接返回响应，不继续透传错误
 exports.errorHandler = (err, req, res, next) => {
-  // 局部错误捕获回调（必须4个参数，Express 识别为错误处理中间件）
-  // 区分 multer 内置错误和自定义错误
   let errorMsg = '文件上传失败';
   let errorCode = 400;
 
-  // 处理 multer 内置标准错误（MulterError）
   if (err instanceof multer.MulterError) {
     switch (err.code) {
       case 'LIMIT_FILE_SIZE':
@@ -39,8 +48,14 @@ exports.errorHandler = (err, req, res, next) => {
         errorMsg = err.message;
     }
   } else if (err) {
-    // 处理自定义错误（如 fileFilter 中抛出的错误）
     errorMsg = err.message;
+    errorCode = 500;
   }
-  next(err);
+
+  // 直接返回错误响应，不再next(err)
+  res.status(errorCode).json({
+    code: errorCode,
+    data: null,
+    message: errorMsg,
+  });
 };

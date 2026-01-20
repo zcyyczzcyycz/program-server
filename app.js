@@ -99,6 +99,7 @@ app.set('view engine', 'pug');
 app.use(async (req, res, next) => {
   // 将用户信息挂载到响应本地变量（res.locals），供模板引擎直接使用
   res.locals.user = req.user;
+  res.pool = app.locals.pool;
 
   // 成功响应方法
   res.success = (data, code = 200, message = '操作成功') => {
@@ -117,16 +118,7 @@ app.use(async (req, res, next) => {
       message,
     });
   };
-  // 连接数据库
-  try {
-    const { verifyPoolConnection, pool } = require('./models/db');
-    await verifyPoolConnection(next);
-    res.pool = pool;
-    let result = await pool.execute('select * from user;');
-    console.log('result', result);
-  } catch (error) {
-    next(error);
-  }
+
   next();
 });
 
@@ -180,7 +172,7 @@ app.use(
     algorithms: ['HS256'], // 指定签名算法为 HS256（HMAC-SHA256）
   }).unless({
     // 配置无需认证的路由（排除登录、注册接口）
-    path: [/^\/auth/, /^\/test/],
+    path: [/^\/auth/, /^\/test/, /^\/upload/],
     methods: ['GET', 'POST'],
   }),
 );
@@ -256,15 +248,25 @@ app.use((err, req, res, next) => {
   } else if (err.name === 'UnauthorizedError') {
     res.error(401, '请先完成登录');
   } else {
-    res.error(err.status || 500, err.message); // 系统错误，向客户端返回 500 状态码和错误提示
+    res.error(err.status || 500, err.msg || err.message); // 系统错误，向客户端返回 500 状态码和错误提示
   }
 });
 
 /**
  * Start Express server. (启动 Express 服务器，监听指定端口)
  */
-app.listen(app.get('port'), () => {
+app.listen(app.get('port'), async () => {
   const { BASE_URL } = process.env;
+
+  // 连接数据库
+  try {
+    const { verifyPoolConnection, pool } = require('./models/db');
+    await verifyPoolConnection();
+    app.locals.pool = pool;
+  } catch (error) {
+    console.error('数据库连接失败，服务终止：', error);
+    process.exit(1); // 连接失败则退出进程，避免启动无效服务
+  }
 
   // 端口/域名匹配校验：给出警告提示，避免 CSRF 不匹配、Oauth 认证失败等问题
   if (!BASE_URL.startsWith('http://localhost')) {
