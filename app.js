@@ -135,7 +135,35 @@ app.use(express.urlencoded({ extended: true }));
 // 挂载全局速率限制器，限制所有请求的频率
 app.use(limiter);
 // 设置安全防护
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        // 1. 基础规则：允许自身域名的所有资源
+        defaultSrc: ["'self'"],
+        // 2. 脚本规则：允许内联脚本（开发环境）+ Blob 协议（Worker）+ 自身域名
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'", // 允许内联脚本（开发环境可用，生产建议用哈希）
+          'blob:', // 允许 Blob 协议的 Web Worker 脚本
+        ],
+        // 3. 显式配置 Worker 规则：允许 Blob 协议（解决 Worker 拦截）
+        workerSrc: ["'self'", 'blob:'],
+        // 4. 图片规则：允许自身域名 + base64 + 外部图片域名（dcloud 官网）
+        imgSrc: [
+          "'self'",
+          'data:', // 允许 base64 图片
+          'https://cdn.dcloud.net.cn', // 允许加载 dcloud 官网的图片
+        ],
+        // 5. 样式规则：允许内联样式（若有需要）
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        // 6. 其他规则（按需添加）
+        connectSrc: ["'self'"], // 允许自身域名的 AJAX/fetch 请求
+        fontSrc: ["'self'", 'data:', 'https://at.alicdn.com'], // 允许字体资源
+      },
+    },
+  }),
+);
 
 // const corsOptions = {
 //   origin: '*', // 允许的域
@@ -164,6 +192,10 @@ app.use(helmet());
 //   }),
 // );
 
+// 配置静态资源托管：将 public 目录下的文件（CSS、JS、图片等）暴露为静态资源
+// maxAge: 31557600000 表示静态资源缓存 1 年（提升前端加载速度，减少服务器请求）
+app.use('/', express.static(path.join(__dirname, 'public'), { maxAge: 31557600000 }));
+
 // JWT 认证中间件配置（当前已注释，未启用）
 // 作用：验证请求头中的 JWT Token，验证通过后将用户信息挂载到 req.user
 app.use(
@@ -172,17 +204,13 @@ app.use(
     algorithms: ['HS256'], // 指定签名算法为 HS256（HMAC-SHA256）
   }).unless({
     // 配置无需认证的路由（排除登录、注册接口）
-    path: [/^\/auth/, /^\/test/, /^\/upload/],
+    path: [/^\/auth/, /^\/test/, /^\/upload/, /^\/noAuth/],
     methods: ['GET', 'POST'],
   }),
 );
 
 // 禁用 Express 默认的 X-Powered-By 响应头，防止泄露应用使用的框架信息（提升安全性）
 app.disable('x-powered-by');
-
-// 配置静态资源托管：将 public 目录下的文件（CSS、JS、图片等）暴露为静态资源
-// maxAge: 31557600000 表示静态资源缓存 1 年（提升前端加载速度，减少服务器请求）
-app.use('/', express.static(path.join(__dirname, 'public'), { maxAge: 31557600000 }));
 
 /**
  * Analytics IDs needed thru layout.pug; set as express local so we don't have to pass them with each render call
@@ -200,10 +228,12 @@ app.locals.FACEBOOK_PIXEL_ID = process.env.FACEBOOK_PIXEL_ID ? process.env.FACEB
 const testRouter = require('./router/test');
 const uploadRouter = require('./router/upload');
 const authRouter = require('./router/auth');
+const noAuthRouter = require('./router/noAuth');
 
 app.use('/test', testRouter);
 app.use('/upload', uploadRouter);
 app.use('/auth', authRouter);
+app.use('/noAuth', noAuthRouter);
 
 // 以下为注释的业务路由，可根据需求启用
 // app.get('/', homeController.index);
