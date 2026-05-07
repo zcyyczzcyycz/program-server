@@ -282,10 +282,49 @@ app.use((err, req, res, next) => {
   }
 });
 
+// socket
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+const httpServer = createServer(app);
+const util = require('util');
+
+const io = new Server(httpServer, {
+  /* options */
+  cors: {
+    origin: '*',
+  },
+});
+
+io.engine.on('connection_error', (err) => {
+  console.log('连接失败原因：', err.message);
+});
+
+io.on('connection', (socket) => {
+  socket.emit(
+    'client',
+    `
+    连接成功：
+    socket:${util.inspect(socket.handshake, { depth: null, colors: false })},
+    `,
+  );
+  socket.on('server', (data) => {
+    socket.emit('client', 'from server');
+  });
+  // 每个 socket 自己的定时器！
+  const timer = setInterval(() => {
+    socket.broadcast.emit('client', `来自${socket.handshake.auth.user}的广播`);
+    socket.emit('client', `from server：${socket.rooms}`);
+  }, 5000);
+
+  // 断开时清理自己的定时器
+  socket.on('disconnect', () => {
+    clearInterval(timer);
+  });
+});
 /**
  * Start Express server. (启动 Express 服务器，监听指定端口)
  */
-app.listen(app.get('port'), async () => {
+httpServer.listen(app.get('port'), async () => {
   const { BASE_URL } = process.env;
 
   // 连接数据库
